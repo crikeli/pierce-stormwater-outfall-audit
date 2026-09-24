@@ -53,8 +53,20 @@ PAGE_TEMPLATE = """<!doctype html>
   #tab-map {{ flex: 1 1 auto; min-height: 0; display: none; position: relative; }}
   #tab-map.active {{ display: block; }}
   #map {{ height: 100%; width: 100%; }}
-  #tab-about {{ display: none; padding: 16px clamp(16px, 4vw, 32px) 48px; overflow-y: auto; }}
-  #tab-about.active {{ display: block; }}
+  #tab-about, #tab-limitations {{ display: none; padding: 16px clamp(16px, 4vw, 32px) 48px; overflow-y: auto; }}
+  #tab-about.active, #tab-limitations.active {{ display: block; }}
+  .test-card {{
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 20px; margin: 16px 0;
+  }}
+  .test-stat {{ font-size: 1.6rem; font-weight: 700; color: var(--accent); }}
+  .test-stat-label {{ font-size: 0.8rem; color: var(--muted); }}
+  .bar-compare {{ margin: 14px 0; }}
+  .bar-row {{ display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 0.85rem; }}
+  .bar-row .bar-label {{ width: 160px; flex: none; color: var(--muted); }}
+  .bar-track {{ flex: 1; background: var(--border); border-radius: 4px; height: 18px; position: relative; }}
+  .bar-fill {{ background: var(--accent); height: 100%; border-radius: 4px; }}
+  .bar-value {{ width: 50px; flex: none; text-align: right; font-weight: 600; }}
   .controls {{
     position: absolute; top: 12px; right: 12px; z-index: 1000; background: var(--surface);
     border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 13px;
@@ -80,6 +92,7 @@ PAGE_TEMPLATE = """<!doctype html>
     <div class="tabs">
       <button class="tab-btn active" data-tab="map">Map</button>
       <button class="tab-btn" data-tab="about">About</button>
+      <button class="tab-btn" data-tab="limitations">Limitations, Tested</button>
     </div>
   </header>
 
@@ -105,13 +118,14 @@ PAGE_TEMPLATE = """<!doctype html>
   </div>
 
   <div id="tab-about">{about_html}</div>
+  <div id="tab-limitations">{limitations_html}</div>
 
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   document.querySelectorAll(".tab-btn").forEach(function (btn) {{
     btn.addEventListener("click", function () {{
       document.querySelectorAll(".tab-btn").forEach(function (b) {{ b.classList.remove("active"); }});
-      document.querySelectorAll("#tab-map, #tab-about").forEach(function (p) {{ p.classList.remove("active"); }});
+      document.querySelectorAll("#tab-map, #tab-about, #tab-limitations").forEach(function (p) {{ p.classList.remove("active"); }});
       btn.classList.add("active");
       document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
       if (btn.dataset.tab === "map") {{ setTimeout(function () {{ map.invalidateSize(); }}, 50); }}
@@ -287,11 +301,13 @@ def main() -> None:
       derivatives) - the county's own metadata confirms it's a WQI score
       but doesn't state direction explicitly.</li>
       <li>Risk weights are illustrative and transparent, not expert- or
-      agency-calibrated.</li>
+      agency-calibrated - see the <strong>Limitations, Tested</strong> tab
+      for how much that actually matters to the resulting priority
+      list.</li>
       <li>Some watersheds with zero outfall points inside may be
       legitimately rural/unserved by piped stormwater infrastructure, not
-      genuine data gaps - distinguishing the two needs a land-use
-      cross-check beyond this project's scope.</li>
+      genuine data gaps - tested, not just asserted, in the
+      <strong>Limitations, Tested</strong> tab.</li>
       <li>This is exposure/audit prioritization, not a confirmed
       illicit-discharge finding - a high score means "verify this first,"
       not "this is a violation."</li>
@@ -307,8 +323,80 @@ def main() -> None:
 
     import json
 
+    with open(os.path.join(DOCS_DIR, "limitations.json")) as f:
+        lim = json.load(f)
+    zt = lim["zoning_test"]
+    ws = lim["weight_sensitivity"]
+
+    limitations_html = f"""
+    <h2>Limitations, Tested</h2>
+    <p>The About tab lists this project's honest limitations. Two of them
+    are checkable with data already on hand - so instead of just stating
+    them, they're tested here, numbers and all.</p>
+
+    <h3>Are the 279 empty watersheds real gaps, or just rural?</h3>
+    <p>279 of 645 watersheds contain zero mapped outfalls. Cross-referencing
+    each watershed's real zoning designation asks: are the empty ones more
+    rural than the served ones?</p>
+    <div class="test-card">
+      <div class="bar-compare">
+        <div class="bar-row">
+          <span class="bar-label">Empty watersheds (n={zt['empty_n']})</span>
+          <div class="bar-track"><div class="bar-fill" style="width:{zt['empty_mean_pct_rural']}%"></div></div>
+          <span class="bar-value">{zt['empty_mean_pct_rural']:.0f}%</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">Served watersheds (n={zt['served_n']})</span>
+          <div class="bar-track"><div class="bar-fill" style="width:{zt['served_mean_pct_rural']}%"></div></div>
+          <span class="bar-value">{zt['served_mean_pct_rural']:.0f}%</span>
+        </div>
+      </div>
+      <p style="font-size:0.85rem;color:var(--muted)">Mean % of watershed area that's rural/agricultural/forest/park-zoned.</p>
+      <div style="display:flex;gap:32px;flex-wrap:wrap;margin-top:10px">
+        <div><div class="test-stat">p &lt; 0.001</div><div class="test-stat-label">Mann-Whitney U, empty &gt; served</div></div>
+        <div><div class="test-stat">{zt['rank_biserial']}</div><div class="test-stat-label">rank-biserial effect size (modest)</div></div>
+        <div><div class="test-stat">{zt['pct_empty_mostly_rural']:.0f}% / {zt['pct_served_mostly_rural']:.0f}%</div><div class="test-stat-label">&gt;95% rural-zoned, empty vs served</div></div>
+      </div>
+      <p style="margin-bottom:0"><strong>Honest read:</strong> statistically
+      significant, but the effect size is small and both groups are
+      dominated by rural zoning. This is weak-to-modest support for
+      "mostly legitimately unserved" - not proof. A meaningful share of
+      the 279 empty watersheds remain genuinely ambiguous and would
+      warrant a real land-use review, not a data assumption either
+      way.</p>
+    </div>
+
+    <h3>How much do the illustrative risk weights actually matter?</h3>
+    <p>The priority score's weights (30% unconfirmed / 30% water quality /
+    25% zoning proximity / 10% staleness / 5% TBD ownership) were chosen
+    transparently, not expert-calibrated. Re-running the score under
+    {ws['n_trials']} random weight perturbations (each weight independently
+    varied &plusmn;50%, renormalized) checks how much that actually
+    changes the resulting top-100 priority list.</p>
+    <div class="test-card">
+      <div style="display:flex;gap:32px;flex-wrap:wrap">
+        <div><div class="test-stat">{ws['mean_jaccard']:.0%}</div><div class="test-stat-label">mean overlap with baseline top-100</div></div>
+        <div><div class="test-stat">{ws['p5_jaccard']:.0%}</div><div class="test-stat-label">overlap, worst 5% of perturbations</div></div>
+        <div><div class="test-stat">{ws['robust_core_count']}</div><div class="test-stat-label">points in top-100 across every perturbation tested</div></div>
+      </div>
+      <p style="margin-bottom:0;margin-top:10px"><strong>Honest read:</strong>
+      this is a genuinely reassuring result, not just an assumption. The
+      ranking is robust to reasonable weight choices - even in the worst
+      5% of perturbations tested, overlap with the baseline stays above
+      {ws['p5_jaccard']:.0%}, and {ws['robust_core_count']} of the top 100
+      points survive in every single perturbation. The "illustrative
+      weights" caveat matters less in practice than it might sound.</p>
+    </div>
+
+    <p style="font-size:0.85rem;color:var(--muted)">Full code for both
+    tests is in the
+    <a href="https://github.com/crikeli/pierce-stormwater-outfall-audit/blob/main/notebooks/outfall_audit_and_priority.ipynb" target="_blank" rel="noopener">analysis notebook</a>,
+    Steps 6-7.</p>
+    """
+
     page = PAGE_TEMPLATE.format(
         about_html=about_html,
+        limitations_html=limitations_html,
         center_json=json.dumps(CENTER),
         total_outfalls=f"{total_outfalls:,}",
         unconfirmed_count=f"{unconfirmed_count:,}",

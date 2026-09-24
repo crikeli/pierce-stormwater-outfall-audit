@@ -1,0 +1,19 @@
+{
+  "zoning_test": {
+    "empty_n": 279,
+    "served_n": 366,
+    "empty_mean_pct_rural": 74.8,
+    "served_mean_pct_rural": 76.6,
+    "p_value": 8.022980710246057e-07,
+    "rank_biserial": -0.22,
+    "pct_empty_mostly_rural": 61.0,
+    "pct_served_mostly_rural": 58.0
+  },
+  "weight_sensitivity": {
+    "n_trials": 500,
+    "mean_jaccard": 0.92,
+    "p5_jaccard": 0.835,
+    "min_jaccard": 0.739,
+    "robust_core_count": 72
+  }
+}
